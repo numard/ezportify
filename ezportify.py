@@ -1,6 +1,10 @@
+#!/usr/bin/env python
+
 from getpass import getpass
 import sys
 from google import Mobileclient
+from collections import defaultdict
+from time import sleep
 import urllib
 import urllib2
 import json
@@ -29,6 +33,8 @@ try:
         input = raw_input
 except NameError:
         pass
+
+spotifyDumpFile='ezportify-tracks.txt'
 
 def win_getpass(prompt='Password: ', stream=None):
         """Prompt for password with echo off, using Windows getch()."""
@@ -84,9 +90,7 @@ def googlelogin():
                 sys.exit()
         return googleapi
 
-def main(args):
-        if not args.dump:
-                googleapi = googlelogin()
+def dumpSpotify():
         print "Enter Spotify OAUTH Token from https://developer.spotify.com/web-api/console/get-current-user-playlists/ "
         oauth = input("Be sure to check the Relevant scopes checkbox: ")
         playlists = hitapi(oauth, 'https://api.spotify.com/v1/me/playlists')
@@ -101,7 +105,7 @@ def main(args):
                 items += playlists['items']
         print len(items)
 
-        f = open('ezportify-tracks.txt', 'w')
+        f = open(spotifyDumpFile, 'w')
 
         for playlist in items:
                 try:
@@ -109,7 +113,6 @@ def main(args):
                         print playlist['name']
                         f.write('\n:::' + playlist['name'] + ":::\n")
                         queries = []
-                        gtracks = []
                         trackresp = hitapi(oauth, playlist['href'])['tracks']
                         tracks = trackresp['items']
                         while trackresp['next']:
@@ -126,34 +129,78 @@ def main(args):
                                         searchstr += track['track']['name']
                                         searchstr_ascii = searchstr.encode("utf-8", "replace")
                                         f.write(searchstr_ascii + "\n")
-                                        gtrack = None
-                                        if not args.dump:
-                                                gtrack = googleapi.find_best_track(searchstr_ascii)
-                                        if gtrack:
-                                                gtracks.append(gtrack["nid"])
-                                                print ot, '/', len(tracks), 'found', searchstr_ascii
-                                        else:
-                                                print ot, '/', len(tracks), 'Not found', searchstr_ascii, 'for', playlist['name']
                                 except Exception as e:
                                         print "----"
                                         print e
                                         print "----"
                                         #print 'Track', ot, 'Failed'
                                 ot += 1
-                        if len(gtracks) > 0:
-                                print "Creating in Google Music... ",
-                                playlist_id = googleapi.create_playlist(playlist['name'])
-                                googleapi.add_songs_to_playlist(playlist_id, gtracks)
-                                print "Done"
                 except:
                         print playlist['name'], 'Failed to copy. Skipping'
+
         f.close()
-        input("Press enter to exit")
+
+def main(args):
+    if not args.dump:
+        googleapi = googlelogin()
+
+    if args.import_file is None:
+        dumpSpotify()
+        importFile = open(spotifyDumpFile,'r')
+    else:
+        importFile = args.import_file
+
+
+    playlistName='INITIAL_USELESS_PLAYLIST_NAME'
+    gInfo = defaultdict(list)
+    with importFile as playlist_and_songs:
+        for item in playlist_and_songs:
+            '''
+            - Playlists start with :::
+            - Songs are formatter as 'Artist - title'
+            - emptyline as delimiter
+            '''
+            if item[0:3] == ':::':
+                playlistName = item[3:-4]
+                print "PLAYLIST: %s " % ( playlistName )
+            elif item != '\n':
+                #print "SONG : ", item
+
+                gtrack = None
+                if not args.dump:
+                        gtrack = googleapi.find_best_track(item)
+
+                if gtrack:
+                        gInfo[playlistName].append(gtrack['nid'])
+                        print 'found', item
+                else:
+                    print 'Not found: Playlist "%s" , song "%s" ' %( playlistName, item[:-1])
+
+    return
+    # create objects for play list, tracks in googleapi...
+    for playlist in gInfo:
+        gtracks= []
+        for song in gInfo[playlist]:
+            gtracks.append(song)
+
+        print "Creating in Google Music playlist %s with songs : %s" % ( playlist, gtracks)
+
+        playlist_id = googleapi.create_playlist(playlist)
+        googleapi.add_songs_to_playlist(playlist_id, gtracks)
+        print "Done playlist %s" % ( playlist )
+        sleep(2)
+
+
+    input("Press enter to exit")
 
 if __name__ == '__main__':
         parser = argparse.ArgumentParser(description='Spotify To Google Playlist Transcription')
         parser.add_argument("-d", "--dump", help="Only Dump Playlists To File",
                                         action="store_true")
+
+        parser.add_argument("-i","--import_file", help="Skip spotify, load playlists and tracks from file passed here",
+                            type=argparse.FileType('r'), default=None)
+
         parser.add_argument('--version', action='version', version='%(prog)s 0.4')
         args = parser.parse_args()
         main(args)
