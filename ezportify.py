@@ -166,17 +166,17 @@ def main(args):
             elif item != '\n':
                 #print "SONG : ", item
 
+                sleep(0.3)
+
                 gtrack = None
                 if not args.dump:
-                        gtrack = googleapi.find_best_track(item)
+                    gtrack = googleapi.find_best_track(item)
+                    if gtrack:
+                            gInfo[playlistName].append(gtrack['nid'])
+                            print 'found', item
+                    else:
+                        print 'Not found: Playlist "%s" , song "%s" ' %( playlistName, item[:-1])
 
-                if gtrack:
-                        gInfo[playlistName].append(gtrack['nid'])
-                        print 'found', item
-                else:
-                    print 'Not found: Playlist "%s" , song "%s" ' %( playlistName, item[:-1])
-
-    return
     # create objects for play list, tracks in googleapi...
     for playlist in gInfo:
         gtracks= []
